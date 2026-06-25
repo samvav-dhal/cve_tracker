@@ -1,12 +1,8 @@
 """
-poller.py  —  print-only version (step 1 of 2)
 
 Reads last-seen state from Postgres, fetches new PyPI advisories from GHSA
 since that state, and prints them. No Kafka producing yet — validate that
 the fetch and filter logic is correct on real data before wiring to the topic.
-
-Run with:
-    python poller.py
 
 Once this prints real advisories correctly, the next step is adding the
 Kafka producer and the state-update logic.
