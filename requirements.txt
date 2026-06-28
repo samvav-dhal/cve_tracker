@@ -1,4 +1,6 @@
 confluent-kafka
+fastapi
 httpx
 psycopg2-binary
 python-dotenv
+uvicorn[standard]

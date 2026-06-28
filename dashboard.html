@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VulnTracker — Security Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset ──────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Design tokens ──────────────────────────────────────────────────── */
+    :root {
+      --bg:          #0f1117;
+      --bg-panel:    #1a1f2e;
+      --bg-row:      #151929;
+      --border:      #2a2f3e;
+      --border-dim:  rgba(42,47,62,0.6);
+      --accent:      #f46800;
+      --accent-glow: rgba(244,104,0,0.18);
+      --text:        #d9d9d9;
+      --text-2:      #8b8fa8;
+      --text-3:      #6b7394;
+      --green:       #73bf69;
+      --yellow:      #faad14;
+      --red:         #f2495c;
+      --blue:        #5794f2;
+      --teal:        #64b5f6;
+      --mono:        'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+      --sans:        'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    /* ── Base ───────────────────────────────────────────────────────────── */
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Scrollbars ─────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar          { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track    { background: transparent; }
+    ::-webkit-scrollbar-thumb    { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+    /* ════════════════════════════════════════════════════════════════════ */
+    /* TOP BAR                                                             */
+    /* ════════════════════════════════════════════════════════════════════ */
+    #topbar {
+      position: sticky; top: 0; z-index: 200;
+      display: flex; align-items: center; gap: 14px;
+      height: 46px;
+      padding: 0 20px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+    .logo {
+      display: flex; align-items: baseline; gap: 8px;
+      flex-shrink: 0;
+    }
+    .logo-name {
+      font-size: 15px; font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+    .logo-tag {
+      font-size: 10px;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 1.4px;
+    }
+    .bar-sep { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+    .bar-lbl { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.8px; }
+    .bar-val { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
+
+    /* live indicator */
+    #live-wrap { display: flex; align-items: center; gap: 6px; }
+    #live-dot  {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green);
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    #live-dot.err { background: var(--red); animation: none; box-shadow: 0 0 6px var(--red); }
+    @keyframes pulse {
+      0%,100% { opacity:1; box-shadow: 0 0 5px var(--green); }
+      50%      { opacity:.35; box-shadow: none; }
+    }
+    #live-label { font-size: 11px; font-weight: 600; color: var(--green); letter-spacing: 1px; text-transform: uppercase; }
+    #live-label.err { color: var(--red); }
+
+    /* refresh bar */
+    #refresh-wrap { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    #countdown    { font-family: var(--mono); font-size: 11px; color: var(--text-3); width: 28px; text-align: right; }
+    .rbar         { width: 56px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    #rbar-fill    { height: 100%; width: 100%; background: var(--accent); border-radius: 2px; transition: width 1s linear; }
+
+    /* ════════════════════════════════════════════════════════════════════ */
+    /* LAYOUT                                                              */
+    /* ════════════════════════════════════════════════════════════════════ */
+    #root { display: flex; flex-direction: column; gap: 14px; padding: 14px; }
+
+    /* ── Stats row ──────────────────────────────────────────────────────── */
+    #stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+    .stat-card {
+      position: relative;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 14px 18px 14px 22px;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+      background: var(--accent);
+      border-radius: 4px 0 0 4px;
+    }
+    .stat-card::after {
+      content: '';
+      position: absolute; right: 0; top: 0; bottom: 0; width: 40%;
+      background: linear-gradient(to left, rgba(244,104,0,0.03), transparent);
+      pointer-events: none;
+    }
+    .stat-label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 1.4px;
+      color: var(--text-3); font-weight: 600; margin-bottom: 6px;
+    }
+    .stat-val {
+      font-family: var(--mono); font-size: 34px; font-weight: 700;
+      color: var(--text); line-height: 1; letter-spacing: -1.5px;
+    }
+    .stat-val.sm { font-size: 20px; letter-spacing: -0.5px; padding-top: 6px; }
+    .stat-sub {
+      font-family: var(--mono); font-size: 10px; color: var(--text-3);
+      margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* ── Middle row ─────────────────────────────────────────────────────── */
+    #mid-row { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; align-items: start; }
+
+    /* ── Panel shell ────────────────────────────────────────────────────── */
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .panel-hdr {
+      display: flex; align-items: center; gap: 9px;
+      padding: 9px 14px;
+      background: var(--bg-row);
+      border-bottom: 1px solid var(--border);
+    }
+    .panel-hdr::before {
+      content: ''; width: 3px; height: 13px; flex-shrink: 0;
+      background: var(--accent); border-radius: 2px;
+    }
+    .panel-title {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 1.4px;
+      color: var(--text-2); font-weight: 600;
+    }
+    .panel-badge {
+      margin-left: auto;
+      font-family: var(--mono); font-size: 10px; color: var(--text-3);
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 3px; padding: 2px 7px;
+    }
+    .panel-badge.live {
+      color: var(--green); border-color: rgba(115,191,105,0.35);
+      background: rgba(115,191,105,0.06);
+    }
+
+    /* ════════════════════════════════════════════════════════════════════ */
+    /* HEATMAP                                                             */
+    /* ════════════════════════════════════════════════════════════════════ */
+    #heatmap-wrap { padding: 14px 16px 16px; }
+
+    .hm-axis {
+      display: grid; grid-template-columns: 130px 1fr 46px;
+      gap: 10px; margin-bottom: 8px;
+    }
+    .hm-axis-labels {
+      display: flex; justify-content: space-between;
+      padding: 0 1px;
+    }
+    .hm-axis-labels span {
+      font-family: var(--mono); font-size: 9px; color: var(--text-3);
+    }
+
+    .hm-row {
+      display: grid; grid-template-columns: 130px 1fr 46px;
+      align-items: center; gap: 10px;
+      margin-bottom: 7px;
+      cursor: pointer;
+    }
+    .hm-row:last-child { margin-bottom: 0; }
+    .hm-row:hover .hm-bar { filter: brightness(1.25); }
+    .hm-row.active .hm-track { outline: 1px solid var(--accent); outline-offset: 1px; }
+    .hm-row.active .hm-label { color: var(--accent); }
+
+    .hm-label {
+      font-family: var(--mono); font-size: 11px; color: var(--text-2);
+      text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      transition: color 0.15s;
+    }
+    .hm-track {
+      position: relative; height: 18px;
+      background: rgba(255,255,255,0.025);
+      border-radius: 2px; overflow: hidden;
+      transition: outline 0.1s;
+    }
+    /* Grafana-style grid lines overlaid on bars */
+    .hm-track::after {
+      content: '';
+      position: absolute; inset: 0; z-index: 2; pointer-events: none;
+      background: repeating-linear-gradient(
+        to right,
+        transparent, transparent calc(25% - 1px),
+        rgba(15,17,23,0.55) calc(25% - 1px), rgba(15,17,23,0.55) 25%
+      );
+    }
+    .hm-bar {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      width: 0; z-index: 1; border-radius: 2px;
+      transition: filter 0.15s;
+    }
+    .hm-count {
+      font-family: var(--mono); font-size: 11px; color: var(--text-2);
+      white-space: nowrap;
+    }
+    .hm-empty { padding: 30px; text-align: center; color: var(--text-3); font-size: 12px; }
+
+    /* ════════════════════════════════════════════════════════════════════ */
+    /* FEED                                                                */
+    /* ════════════════════════════════════════════════════════════════════ */
+    #feed-filter {
+      display: none; align-items: center; gap: 8px;
+      padding: 5px 12px;
+      background: var(--accent-glow); border-bottom: 1px solid rgba(244,104,0,0.4);
+      font-size: 11px; color: var(--accent);
+    }
+    #feed-filter.on { display: flex; }
+    #feed-filter strong { font-family: var(--mono); }
+    .filter-x {
+      margin-left: auto; cursor: pointer;
+      border: 1px solid rgba(244,104,0,0.5); border-radius: 3px;
+      background: transparent; color: var(--accent);
+      font-size: 10px; padding: 1px 7px; line-height: 1.6;
+      transition: background 0.12s;
+    }
+    .filter-x:hover { background: var(--accent-glow); }
+
+    #feed-list {
+      height: 370px; overflow-y: auto; padding: 4px 0;
+    }
+
+    .feed-item {
+      display: grid; grid-template-columns: 1fr auto;
+      align-items: start; gap: 6px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border-dim);
+      animation: slide-down .28s ease-out;
+    }
+    @keyframes slide-down {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .feed-item:hover { background: rgba(255,255,255,0.018); }
+    .feed-repo {
+      font-family: var(--mono); font-size: 12px; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .feed-pkg  { font-family: var(--mono); font-size: 11px; margin-top: 2px; }
+    .pkg-name  { color: var(--blue); }
+    .pkg-eq    { color: var(--text-3); }
+    .pkg-ver   { color: var(--yellow); }
+    .feed-id   { font-family: var(--mono); font-size: 10px; color: var(--text-3); margin-top: 1px; }
+    .feed-time { font-size: 10px; color: var(--text-3); white-space: nowrap; padding-top: 1px; }
+    .feed-empty { padding: 36px; text-align: center; color: var(--text-3); font-size: 12px; }
+
+    /* ════════════════════════════════════════════════════════════════════ */
+    /* ADVISORY TABLE                                                      */
+    /* ════════════════════════════════════════════════════════════════════ */
+    #adv-table {
+      width: 100%; border-collapse: collapse;
+    }
+    #adv-table thead tr {
+      background: var(--bg-row); border-bottom: 2px solid var(--border);
+    }
+    #adv-table th {
+      padding: 8px 14px; text-align: left;
+      font-size: 10px; text-transform: uppercase;
+      letter-spacing: 1.3px; color: var(--text-2);
+      font-weight: 600; white-space: nowrap;
+    }
+    #adv-table th.center { text-align: center; }
+
+    .adv-row {
+      border-bottom: 1px solid var(--border-dim);
+      cursor: pointer; transition: background 0.1s;
+    }
+    .adv-row:hover       { background: rgba(255,255,255,0.018); }
+    .adv-row.open        { background: rgba(244,104,0,0.04); border-bottom-color: transparent; }
+
+    #adv-table td { padding: 9px 14px; vertical-align: middle; }
+
+    .adv-ghsa-id {
+      font-family: var(--mono); font-size: 12px; color: var(--accent);
+      white-space: nowrap;
+    }
+    .adv-count { text-align: center; }
+    .badge {
+      display: inline-block; font-family: var(--mono); font-size: 11px;
+      font-weight: 700; padding: 2px 9px; border-radius: 10px;
+    }
+    .b-low  { background: rgba(115,191,105,.12); color: var(--green); border: 1px solid rgba(115,191,105,.3); }
+    .b-med  { background: rgba(250,173,20,.12);  color: var(--yellow); border: 1px solid rgba(250,173,20,.3); }
+    .b-high { background: rgba(244,104,0,.12);   color: var(--accent); border: 1px solid rgba(244,104,0,.3); }
+    .b-crit { background: rgba(242,73,92,.12);   color: var(--red);    border: 1px solid rgba(242,73,92,.3); }
+
+    .adv-ts  { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
+    .adv-ts-abs { font-size: 10px; color: var(--text-3); margin-left: 8px; }
+
+    .expand-btn {
+      background: none; border: 1px solid var(--border);
+      border-radius: 3px; color: var(--text-2);
+      font-family: var(--mono); font-size: 10px;
+      padding: 3px 9px; cursor: pointer;
+      transition: all .12s;
+    }
+    .expand-btn:hover        { border-color: var(--accent); color: var(--accent); }
+    .expand-btn.open         { background: var(--accent-glow); border-color: var(--accent); color: var(--accent); }
+
+    .detail-row { display: none; background: var(--bg); }
+    .detail-row.on { display: table-row; }
+    .detail-row td { padding: 0; }
+    .detail-inner { padding: 12px 36px 14px; border-bottom: 1px solid var(--border); }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 7px;
+    }
+    .detail-card {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      font-family: var(--mono); font-size: 11px;
+    }
+    .dc-repo    { color: var(--blue); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dc-pkg     { color: var(--text-2); flex-shrink:0; }
+    .dc-sep     { color: var(--text-3); flex-shrink:0; }
+    .dc-ver     { color: var(--yellow); flex-shrink:0; }
+    .dc-ts      { color: var(--text-3); font-size:10px; flex-shrink:0; }
+    .detail-loading { padding: 14px 36px; font-size: 11px; color: var(--text-3); font-family: var(--mono); }
+    .detail-error   { padding: 14px 36px; font-size: 11px; color: var(--red);    font-family: var(--mono); }
+
+    /* ── Search bar ──────────────────────────────────────────────────────── */
+    #search-wrap { width: 100%; }
+    #search-bar {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0 14px;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    #search-bar:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(244,104,0,.25), 0 0 16px rgba(244,104,0,.08);
+    }
+    #search-icon {
+      flex-shrink: 0; color: var(--text-3);
+      display: flex; align-items: center;
+      transition: color .15s;
+    }
+    #search-bar:focus-within #search-icon { color: var(--accent); }
+    #search-input {
+      flex: 1; background: none; border: none; outline: none;
+      color: var(--text); caret-color: var(--accent);
+      font-family: var(--mono); font-size: 13px;
+      padding: 11px 0;
+    }
+    #search-input::placeholder { color: var(--text-3); }
+    #search-hint {
+      font-family: var(--mono); font-size: 10px; color: var(--text-3);
+      white-space: nowrap; flex-shrink: 0;
+      transition: opacity .15s;
+    }
+    #search-clear-btn {
+      display: none; flex-shrink: 0;
+      background: none; border: 1px solid var(--border); border-radius: 3px;
+      color: var(--text-3); cursor: pointer;
+      font-size: 10px; padding: 2px 7px; line-height: 1.6;
+      transition: all .12s;
+    }
+    #search-clear-btn.on { display: block; }
+    #search-clear-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .feed-item mark {
+      background: rgba(244,104,0,.22); color: var(--accent);
+      border-radius: 2px; padding: 0 1px; font-style: normal;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ════════════════ TOP BAR ════════════════ -->
+<nav id="topbar">
+  <div class="logo">
+    <span class="logo-name">VulnTracker</span>
+    <span class="logo-tag">Dependency Vuln Propagation</span>
+  </div>
+
+  <div class="bar-sep"></div>
+
+  <div id="live-wrap">
+    <div id="live-dot"></div>
+    <span id="live-label">LIVE</span>
+  </div>
+
+  <div class="bar-sep"></div>
+  <span class="bar-lbl">Last&nbsp;refresh</span>
+  <span class="bar-val" id="last-refresh">—</span>
+
+  <div id="refresh-wrap">
+    <span id="countdown">30s</span>
+    <div class="rbar"><div id="rbar-fill"></div></div>
+  </div>
+</nav>
+
+<!-- ════════════════ MAIN ════════════════ -->
+<div id="root">
+
+  <!-- Stats row -->
+  <div id="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Total Advisories Tracked</div>
+      <div class="stat-val" id="s-adv">—</div>
+      <div class="stat-sub" id="s-adv-sub">unique GHSA advisories</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Affected Repos Identified</div>
+      <div class="stat-val" id="s-repo">—</div>
+      <div class="stat-sub">unique public repositories</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Last Detection</div>
+      <div class="stat-val sm" id="s-last">—</div>
+      <div class="stat-sub" id="s-last-abs">loading…</div>
+    </div>
+  </div>
+
+  <!-- Search bar -->
+  <div id="search-wrap">
+    <div id="search-bar">
+      <span id="search-icon">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </span>
+      <input id="search-input" type="text" placeholder="Search repo or package…" spellcheck="false" autocomplete="off" />
+      <span id="search-hint">↵ Enter for full DB search</span>
+      <button id="search-clear-btn" title="Clear search">✕ Clear</button>
+    </div>
+  </div>
+
+  <!-- Middle: heatmap + feed -->
+  <div id="mid-row">
+
+    <!-- Heatmap -->
+    <div class="panel" id="heatmap-panel">
+      <div class="panel-hdr">
+        <span class="panel-title">Package Risk Heatmap</span>
+        <span class="panel-badge" id="hm-badge">top 20 packages · by affected repos</span>
+      </div>
+      <div id="heatmap-wrap">
+        <div class="hm-empty">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Feed -->
+    <div class="panel" style="display:flex;flex-direction:column">
+      <div class="panel-hdr">
+        <span class="panel-title">Live Match Feed</span>
+        <span class="panel-badge live" id="feed-badge">● latest 50</span>
+      </div>
+      <div id="feed-filter">
+        <span>Filter: <strong id="filter-name">—</strong></span>
+        <button class="filter-x" id="filter-clear">✕ Clear</button>
+      </div>
+      <div id="feed-list">
+        <div class="feed-empty">Loading…</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Advisory table -->
+  <div class="panel">
+    <div class="panel-hdr">
+      <span class="panel-title">Advisory Intelligence</span>
+      <span class="panel-badge" id="adv-badge">—</span>
+    </div>
+    <table id="adv-table">
+      <thead>
+        <tr>
+          <th style="width:220px">GHSA ID</th>
+          <th class="center" style="width:130px">Affected Repos</th>
+          <th>Latest Detection</th>
+          <th class="center" style="width:90px">Detail</th>
+        </tr>
+      </thead>
+      <tbody id="adv-tbody">
+        <tr><td colspan="4"><div class="detail-loading">Loading advisories…</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- #root -->
+
+<script>
+"use strict";
+
+// ── Config ─────────────────────────────────────────────────────────────────
+// When served from the API itself (GET /) use relative URLs so no hardcoded
+// host is needed.  Override by setting window.VULNTRACKER_API before this
+// script runs, e.g. for a standalone file opened from disk.
+const API   = window.VULNTRACKER_API || '';
+const TICK  = 30; // seconds between full refresh
+
+// ── State ──────────────────────────────────────────────────────────────────
+let feedAll      = [];
+let activeFilter = null;
+let searchQuery  = '';       // current value of the search bar
+let countdown    = TICK;
+let countInterval;
+const expandCache = {};
+const feedCache   = {};   // keyed by package name — pre-warmed after heatmap load
+
+// ── Security: HTML escape for all API strings ──────────────────────────────
+function h(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Time helpers ────────────────────────────────────────────────────────────
+function rel(iso) {
+  if (!iso) return '—';
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s <  5)   return 'just now';
+  if (s < 60)   return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) {
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+    return m ? `${h}h ${m}m ago` : `${h}h ago`;
+  }
+  return `${Math.floor(s/86400)}d ago`;
+}
+
+function absShort(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toISOString().replace('T',' ').slice(0,16) + ' UTC';
+}
+
+// ── Bar colour: green → yellow → orange → red ──────────────────────────────
+function barColour(count, max) {
+  const t = count / max;
+  if (t < 0.2)  return '#73bf69';
+  if (t < 0.45) return '#faad14';
+  if (t < 0.75) return '#f46800';
+  return '#f2495c';
+}
+
+// ── Badge class by count ────────────────────────────────────────────────────
+function badgeClass(n) {
+  if (n <=  2) return 'b-low';
+  if (n <=  7) return 'b-med';
+  if (n <= 20) return 'b-high';
+  return 'b-crit';
+}
+
+// ── Fetch helper ────────────────────────────────────────────────────────────
+async function apiFetch(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// STATS
+// ══════════════════════════════════════════════════════════════════════════
+async function loadStats() {
+  const d = await apiFetch('/stats');
+  document.getElementById('s-adv').textContent  = d.total_advisories ?? '0';
+  document.getElementById('s-repo').textContent = d.total_repos ?? '0';
+  document.getElementById('s-last').textContent = rel(d.last_detected);
+  document.getElementById('s-last-abs').textContent = absShort(d.last_detected);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// HEATMAP
+// ══════════════════════════════════════════════════════════════════════════
+async function loadHeatmap() {
+  const data = await apiFetch('/heatmap');
+  const wrap = document.getElementById('heatmap-wrap');
+
+  if (!data.length) {
+    wrap.innerHTML = '<div class="hm-empty">No vulnerability data yet.</div>';
+    return;
+  }
+
+  const max = data[0].affected_repo_count;
+
+  // Dynamic axis labels
+  const axisVals = [0, Math.round(max*0.25), Math.round(max*0.5), Math.round(max*0.75), max];
+  const axisHTML = axisVals.map(v => `<span>${v}</span>`).join('');
+
+  const rowsHTML = data.map((d, i) => {
+    const pct   = (d.affected_repo_count / max * 100).toFixed(2);
+    const color = barColour(d.affected_repo_count, max);
+    return `
+      <div class="hm-row" data-pkg="${h(d.package)}" data-idx="${i}">
+        <div class="hm-label" title="${h(d.package)}">${h(d.package)}</div>
+        <div class="hm-track">
+          <div class="hm-bar" id="hbar-${i}"
+               data-pct="${pct}"
+               style="background:${color}"></div>
+        </div>
+        <div class="hm-count">${h(d.affected_repo_count)}</div>
+      </div>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="hm-axis">
+      <div></div>
+      <div class="hm-axis-labels">${axisHTML}</div>
+      <div></div>
+    </div>
+    ${rowsHTML}`;
+
+  // Staggered bar entrance animation
+  data.forEach((_, i) => {
+    setTimeout(() => {
+      const bar = document.getElementById(`hbar-${i}`);
+      if (!bar) return;
+      bar.style.transition = 'width .55s cubic-bezier(.34,1.56,.64,1)';
+      bar.style.width = bar.dataset.pct + '%';
+    }, i * 38);
+  });
+
+  // Restore filter highlight
+  if (activeFilter) {
+    wrap.querySelectorAll('.hm-row').forEach(r => {
+      if (r.dataset.pkg === activeFilter) r.classList.add('active');
+    });
+  }
+
+  // Pre-warm feed cache for top packages in the background (staggered so
+  // it doesn't compete with visible requests).
+  const topPkgs = data.slice(0, 8).map(d => d.package);
+  prewarmFeedCache(topPkgs);
+}
+
+// Pre-warm feed cache for a list of packages, staggered 150 ms apart.
+// Runs silently in background — errors are swallowed intentionally.
+async function prewarmFeedCache(pkgs) {
+  for (const pkg of pkgs) {
+    if (feedCache[pkg]) continue;          // already cached
+    try {
+      feedCache[pkg] = await apiFetch('/feed?package=' + encodeURIComponent(pkg));
+    } catch { /* non-critical */ }
+    await new Promise(r => setTimeout(r, 150));
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// FEED
+// ══════════════════════════════════════════════════════════════════════════
+async function loadFeed() {
+  feedAll = await apiFetch('/feed');
+  if (!activeFilter) renderFeed();
+}
+
+async function renderFeed(pkg) {
+  const list  = document.getElementById('feed-list');
+  const badge = document.getElementById('feed-badge');
+
+  if (pkg) {
+    // Serve from cache instantly; only show loading spinner on a true miss.
+    if (feedCache[pkg]) {
+      badge.textContent = `● ${feedCache[pkg].length} · ${pkg}`;
+      if (!feedCache[pkg].length) {
+        list.innerHTML = `<div class="feed-empty">No matches for <strong>${h(pkg)}</strong></div>`;
+      } else {
+        list.innerHTML = feedCache[pkg].map(feedItemHTML).join('');
+      }
+      return;
+    }
+    list.innerHTML = '<div class="feed-empty">Loading…</div>';
+    badge.textContent = `● loading · ${pkg}`;
+    try {
+      const items = await apiFetch('/feed?package=' + encodeURIComponent(pkg));
+      feedCache[pkg] = items;              // store for future clicks
+      badge.textContent = `● ${items.length} · ${pkg}`;
+      if (!items.length) {
+        list.innerHTML = `<div class="feed-empty">No matches for <strong>${h(pkg)}</strong></div>`;
+        return;
+      }
+      list.innerHTML = items.map(feedItemHTML).join('');
+    } catch (e) {
+      list.innerHTML = `<div class="feed-empty" style="color:var(--red)">Failed to load: ${h(e.message)}</div>`;
+    }
+  } else {
+    badge.textContent = `● latest ${feedAll.length}`;
+    if (!feedAll.length) {
+      list.innerHTML = '<div class="feed-empty">No detections yet.</div>';
+      return;
+    }
+    list.innerHTML = feedAll.map(feedItemHTML).join('');
+  }
+}
+
+function feedItemHTML(e) {
+  return `
+    <div class="feed-item">
+      <div>
+        <div class="feed-repo">${h(e.repo)}</div>
+        <div class="feed-pkg">
+          <span class="pkg-name">${h(e.package)}</span><span class="pkg-eq">==</span><span class="pkg-ver">${h(e.installed_version)}</span>
+        </div>
+        <div class="feed-id">${h(e.ghsa_id)}</div>
+      </div>
+      <div class="feed-time">${rel(e.detected_at)}</div>
+    </div>`;
+}
+
+// Filter feed by package (called from heatmap row click via delegation)
+function setFeedFilter(pkg, rowEl) {
+  if (activeFilter === pkg) { clearFilter(); return; }
+  // Heatmap click takes over — clear any active search
+  clearSearchSilent();
+  activeFilter = pkg;
+
+  document.querySelectorAll('.hm-row').forEach(r => r.classList.remove('active'));
+  if (rowEl) rowEl.classList.add('active');
+
+  document.getElementById('feed-filter').classList.add('on');
+  document.getElementById('filter-name').textContent = pkg;
+
+  renderFeed(pkg);
+}
+
+function clearFilter() {
+  activeFilter = null;
+  document.querySelectorAll('.hm-row').forEach(r => r.classList.remove('active'));
+  document.getElementById('feed-filter').classList.remove('on');
+  renderFeed();   // no arg → renders from cached feedAll
+}
+
+document.getElementById('filter-clear').addEventListener('click', clearFilter);
+
+// Heatmap click delegation
+document.getElementById('heatmap-wrap').addEventListener('click', e => {
+  const row = e.target.closest('.hm-row');
+  if (row) setFeedFilter(row.dataset.pkg, row);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// SEARCH
+// ══════════════════════════════════════════════════════════════════════════
+const _sinput = document.getElementById('search-input');
+const _shint  = document.getElementById('search-hint');
+const _sclear = document.getElementById('search-clear-btn');
+
+_sinput.addEventListener('input', () => {
+  searchQuery = _sinput.value;                  // preserve case for display
+  const q     = searchQuery.trim();
+  _sclear.classList.toggle('on', q.length > 0);
+  _shint.style.opacity = q ? '1' : '0.5';
+
+  if (!q) { clearSearchSilent(); renderFeed(); return; }
+
+  // Search takes over — clear package filter silently
+  activeFilter = null;
+  document.getElementById('feed-filter').classList.remove('on');
+
+  // ── Client-side filter on feedAll (instant) ───────────────────────────
+  const ql       = q.toLowerCase();
+  const filtered = feedAll.filter(e =>
+    e.repo.toLowerCase().includes(ql) || e.package.toLowerCase().includes(ql)
+  );
+
+  // Highlight any heatmap bar whose package name exactly matches the query
+  document.querySelectorAll('.hm-row').forEach(r =>
+    r.classList.toggle('active', r.dataset.pkg.toLowerCase() === ql)
+  );
+
+  renderSearchResults(filtered, q, /* serverSearch */ false);
+});
+
+_sinput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const q = _sinput.value.trim();
+    if (q) fireServerSearch(q);
+  }
+  if (e.key === 'Escape') clearSearch();
+});
+
+_sclear.addEventListener('click', clearSearch);
+
+async function fireServerSearch(q) {
+  const list  = document.getElementById('feed-list');
+  const badge = document.getElementById('feed-badge');
+  list.innerHTML  = '<div class="feed-empty">Searching…</div>';
+  badge.textContent = `● searching…`;
+  try {
+    const items = await apiFetch('/feed?q=' + encodeURIComponent(q));
+    renderSearchResults(items, q, /* serverSearch */ true);
+  } catch (err) {
+    list.innerHTML = `<div class="feed-empty" style="color:var(--red)">Search failed: ${h(err.message)}</div>`;
+    document.getElementById('feed-badge').textContent = `● error`;
+  }
+}
+
+function renderSearchResults(items, q, serverSearch) {
+  const list  = document.getElementById('feed-list');
+  const badge = document.getElementById('feed-badge');
+  const label = serverSearch ? `${items.length} DB results` : `${items.length} local matches`;
+  badge.textContent = `● ${label} · "${q}"`;
+
+  if (!items.length) {
+    const hint = serverSearch ? '' : ' — press ↵ Enter to search full DB';
+    list.innerHTML = `<div class="feed-empty">No results for <strong>${h(q)}</strong>${hint}</div>`;
+    return;
+  }
+
+  // Highlight matching substrings in repo and package fields
+  const ql = q.toLowerCase();
+  function hilite(str) {
+    const idx = str.toLowerCase().indexOf(ql);
+    if (idx === -1) return h(str);
+    return h(str.slice(0, idx))
+      + `<mark>${h(str.slice(idx, idx + q.length))}</mark>`
+      + h(str.slice(idx + q.length));
+  }
+
+  list.innerHTML = items.map(e => `
+    <div class="feed-item">
+      <div>
+        <div class="feed-repo">${hilite(e.repo)}</div>
+        <div class="feed-pkg">
+          <span class="pkg-name">${hilite(e.package)}</span><span class="pkg-eq">=</span><span class="pkg-eq">=</span><span class="pkg-ver">${h(e.installed_version)}</span>
+        </div>
+        <div class="feed-id">${h(e.ghsa_id)}</div>
+      </div>
+      <div class="feed-time">${rel(e.detected_at)}</div>
+    </div>`).join('');
+}
+
+// Clear search without side-effects (used when other modes take over)
+function clearSearchSilent() {
+  searchQuery = '';
+  _sinput.value = '';
+  _sclear.classList.remove('on');
+  _shint.style.opacity = '0.5';
+  document.querySelectorAll('.hm-row').forEach(r => r.classList.remove('active'));
+}
+
+function clearSearch() {
+  clearSearchSilent();
+  activeFilter = null;
+  document.getElementById('feed-filter').classList.remove('on');
+  renderFeed();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ADVISORY TABLE
+// ══════════════════════════════════════════════════════════════════════════
+async function loadAdvisories() {
+  const data  = await apiFetch('/advisories');
+  const tbody = document.getElementById('adv-tbody');
+  document.getElementById('adv-badge').textContent = `${data.length} advisories`;
+
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="4"><div class="detail-loading">No advisories detected yet.</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(d => `
+    <tr class="adv-row" data-ghsa="${h(d.ghsa_id)}">
+      <td><span class="adv-ghsa-id">${h(d.ghsa_id)}</span></td>
+      <td class="adv-count">
+        <span class="badge ${badgeClass(d.affected_repo_count)}">${h(d.affected_repo_count)}</span>
+      </td>
+      <td>
+        <span class="adv-ts">${rel(d.latest_detection)}</span>
+        <span class="adv-ts-abs">${absShort(d.latest_detection)}</span>
+      </td>
+      <td style="text-align:center">
+        <button class="expand-btn" data-ghsa="${h(d.ghsa_id)}">▸ Repos</button>
+      </td>
+    </tr>
+    <tr class="detail-row" id="dr-${h(d.ghsa_id)}">
+      <td colspan="4">
+        <div id="di-${h(d.ghsa_id)}" class="detail-loading">Loading…</div>
+      </td>
+    </tr>`).join('');
+}
+
+async function toggleAdvisory(ghsaId) {
+  const advRow    = document.querySelector(`.adv-row[data-ghsa="${CSS.escape(ghsaId)}"]`);
+  const detailRow = document.getElementById(`dr-${ghsaId}`);
+  const btn       = advRow ? advRow.querySelector('.expand-btn') : null;
+
+  if (!detailRow) return;
+
+  const isOpen = detailRow.classList.contains('on');
+  if (isOpen) {
+    detailRow.classList.remove('on');
+    advRow?.classList.remove('open');
+    if (btn) { btn.classList.remove('open'); btn.textContent = '▸ Repos'; }
+    return;
+  }
+
+  detailRow.classList.add('on');
+  advRow?.classList.add('open');
+  if (btn) { btn.classList.add('open'); btn.textContent = '▾ Close'; }
+
+  // Serve from cache if available
+  if (expandCache[ghsaId]) {
+    renderDetail(ghsaId, expandCache[ghsaId]);
+    return;
+  }
+
+  try {
+    const repos = await apiFetch(`/advisories/${encodeURIComponent(ghsaId)}`);
+    expandCache[ghsaId] = repos;
+    renderDetail(ghsaId, repos);
+  } catch (err) {
+    const el = document.getElementById(`di-${ghsaId}`);
+    if (el) { el.className = 'detail-error'; el.textContent = `Error: ${err.message}`; }
+  }
+}
+
+function renderDetail(ghsaId, repos) {
+  const el = document.getElementById(`di-${ghsaId}`);
+  if (!el) return;
+  if (!repos.length) { el.textContent = 'No repos found.'; return; }
+
+  el.className = 'detail-inner';
+  el.innerHTML = `<div class="detail-grid">${
+    repos.map(r => `
+      <div class="detail-card">
+        <span class="dc-repo" title="${h(r.repo)}">${h(r.repo)}</span>
+        <span class="dc-pkg">${h(r.package)}</span>
+        <span class="dc-sep">//</span>
+        <span class="dc-ver">${h(r.installed_version)}</span>
+        <span class="dc-ts">${rel(r.detected_at)}</span>
+      </div>`).join('')
+  }</div>`;
+}
+
+// Advisory table click delegation
+document.getElementById('adv-tbody').addEventListener('click', e => {
+  const btn = e.target.closest('.expand-btn');
+  const row = e.target.closest('.adv-row');
+  if (btn || row) {
+    const ghsa = (btn || row).dataset.ghsa;
+    if (ghsa) toggleAdvisory(ghsa);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// REFRESH CYCLE
+// ══════════════════════════════════════════════════════════════════════════
+function tickCountdown() {
+  clearInterval(countInterval);
+  countdown = TICK;
+  const fill = document.getElementById('rbar-fill');
+  const cntEl = document.getElementById('countdown');
+
+  fill.style.transition = 'none';
+  fill.style.width = '100%';
+
+  // Force reflow so the transition reset takes effect
+  void fill.offsetWidth;
+  fill.style.transition = 'width 1s linear';
+
+  countInterval = setInterval(() => {
+    countdown--;
+    cntEl.textContent = countdown + 's';
+    fill.style.width = (countdown / TICK * 100) + '%';
+    if (countdown <= 0) clearInterval(countInterval);
+  }, 1000);
+}
+
+async function refresh() {
+  const dot   = document.getElementById('live-dot');
+  const label = document.getElementById('live-label');
+
+  try {
+    await Promise.all([
+      loadStats(),
+      loadHeatmap(),
+      loadFeed(),
+      loadAdvisories(),
+    ]);
+
+    dot.classList.remove('err');
+    label.classList.remove('err');
+    label.textContent = 'LIVE';
+
+    const now = new Date().toLocaleTimeString('en-US', { hour12: false });
+    document.getElementById('last-refresh').textContent = now;
+
+  } catch (err) {
+    dot.classList.add('err');
+    label.classList.add('err');
+    label.textContent = 'ERROR';
+    console.error('Refresh failed:', err);
+  }
+
+  tickCountdown();
+  setTimeout(refresh, TICK * 1000);
+}
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+refresh();
+</script>
+</body>
+</html>

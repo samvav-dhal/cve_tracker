@@ -66,7 +66,7 @@ def _gh_get(url: str, params: dict | None = None, text_match: bool = False) -> d
 # Matches only pinned versions: "requests==2.31.0"
 # Deliberately ignores >=, ~=, etc. — unpinned deps can't be precisely verified.
 _PIN_RE = re.compile(
-    r"(?:^|\n)\s*(?P<pkg>[A-Za-z0-9_\-\.]+)\s*==\s*(?P<ver>[^\s;#\n]+)",
+    r"(?:^|\n)\s*(?P<pkg>[A-Za-z0-9_\-\.]+)\s*==\s*(?P<ver>[^\s;#,\n]+)",
     re.MULTILINE,
 )
 
@@ -74,11 +74,23 @@ def _pinned_version(text: str, package: str) -> str | None:
     norm = package.lower().replace("-", "_")
     for m in _PIN_RE.finditer(text):
         if m.group("pkg").lower().replace("-", "_") == norm:
-            return m.group("ver").strip()
+            ver = m.group("ver").strip().rstrip(",;# \t\r\n")
+            return ver if ver else None
     return None
 
 
 def search_repos(package_name: str) -> list[dict]:
+    """
+    Search GitHub Code for repos that pin `package_name==` in requirements.txt.
+
+    Strategy:
+      1. Code Search with text-match+json — result fragments often contain the
+         version line, saving a per-repo file fetch.
+      2. Fallback to GET /repos/{owner}/{repo}/contents/{path} if not found in
+         the fragment.
+
+    Returns [{repo: "owner/name", version: "x.y.z" | None}, ...]
+    """
     print(f"  [GH SEARCH] {package_name}")
     data = _gh_get(
         "https://api.github.com/search/code",
@@ -137,26 +149,31 @@ def osv_querybatch(candidates: list[dict]) -> dict:
     if not candidates:
         return {}
 
+    queries = [
+        {
+            "package": {"name": c["package"], "ecosystem": "PyPI"},
+            "version": c["version"],
+        }
+        for c in candidates
+        if c["version"] and isinstance(c["version"], str) and c["version"].strip()
+    ]
+    if not queries:
+        return {}
+
     resp = httpx.post(
         "https://api.osv.dev/v1/querybatch",
-        json={
-            "queries": [
-                {
-                    "package": {"name": c["package"], "ecosystem": "PyPI"},
-                    "version": c["version"],
-                }
-                for c in candidates
-            ]
-        },
+        json={"queries": queries},
         timeout=30,
     )
+    if resp.status_code == 400:
+        print(f"  [OSV 400] payload sample: {queries[:3]}")
     resp.raise_for_status()
 
     out = {}
     for i, result in enumerate(resp.json().get("results", [])):
         vulns = result.get("vulns", [])
         if vulns:
-            key     = (candidates[i]["package"], candidates[i]["version"])
+            key     = (queries[i]["package"]["name"], queries[i]["version"])
             out[key] = [v["id"] for v in vulns]
     return out
 
@@ -164,11 +181,21 @@ def osv_querybatch(candidates: list[dict]) -> dict:
 # ── Core processing ──────────────────────────────────────────────────────────
 
 def process(advisory: dict, producer: Producer) -> int:
+    """
+    Full pipeline for one advisory:
+      1. Extract affected PyPI package names
+      2. Search GitHub for repos pinning those packages
+      3. Batch-verify with OSV.dev
+      4. Produce confirmed matches to repo_affected
+
+    Raises on Kafka delivery failure so the caller can skip offset commit
+    and let the advisory be reprocessed on restart (at-least-once delivery).
+    """
     ghsa_id  = advisory["ghsa_id"]
     packages = [
         p["name"]
         for p in advisory.get("packages", [])
-        if p.get("ecosystem") == "PyPI" and p.get("name")
+        if p.get("ecosystem", "").lower() in ("pypi", "pip") and p.get("name")
     ]
     if not packages:
         print(f"  [SKIP] {ghsa_id}: no PyPI packages in advisory")
