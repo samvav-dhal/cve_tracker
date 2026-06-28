@@ -98,9 +98,6 @@
 
     /* refresh bar */
     #refresh-wrap { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-    #countdown    { font-family: var(--mono); font-size: 11px; color: var(--text-3); width: 28px; text-align: right; }
-    .rbar         { width: 56px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
-    #rbar-fill    { height: 100%; width: 100%; background: var(--accent); border-radius: 2px; transition: width 1s linear; }
 
     /* ════════════════════════════════════════════════════════════════════ */
     /* LAYOUT                                                              */
@@ -433,8 +430,7 @@
   <span class="bar-val" id="last-refresh">—</span>
 
   <div id="refresh-wrap">
-    <span id="countdown">30s</span>
-    <div class="rbar"><div id="rbar-fill"></div></div>
+    <span id="paused-lbl" style="display:none;font-size:10px;color:var(--text-3);letter-spacing:.6px">update pending</span>
   </div>
 </nav>
 
@@ -534,14 +530,15 @@
 // host is needed.  Override by setting window.VULNTRACKER_API before this
 // script runs, e.g. for a standalone file opened from disk.
 const API   = window.VULNTRACKER_API || '';
-const TICK  = 30; // seconds between full refresh
+const TICK       = 30; // seconds between full refresh
+const BUSY_RETRY = 5;  // seconds between retries while user is examining
+
 
 // ── State ──────────────────────────────────────────────────────────────────
 let feedAll      = [];
 let activeFilter = null;
 let searchQuery  = '';       // current value of the search bar
-let countdown    = TICK;
-let countInterval;
+
 const expandCache = {};
 const feedCache   = {};   // keyed by package name — pre-warmed after heatmap load
 
@@ -982,34 +979,34 @@ document.getElementById('adv-tbody').addEventListener('click', e => {
 // ══════════════════════════════════════════════════════════════════════════
 // REFRESH CYCLE
 // ══════════════════════════════════════════════════════════════════════════
-function tickCountdown() {
-  clearInterval(countInterval);
-  countdown = TICK;
-  const fill = document.getElementById('rbar-fill');
-  const cntEl = document.getElementById('countdown');
+function tickCountdown() {}
 
-  fill.style.transition = 'none';
-  fill.style.width = '100%';
-
-  // Force reflow so the transition reset takes effect
-  void fill.offsetWidth;
-  fill.style.transition = 'width 1s linear';
-
-  countInterval = setInterval(() => {
-    countdown--;
-    cntEl.textContent = countdown + 's';
-    fill.style.width = (countdown / TICK * 100) + '%';
-    if (countdown <= 0) clearInterval(countInterval);
-  }, 1000);
+// Returns true when the user is actively examining data and a full re-render
+// would be disruptive (detail panel open, filter active, or search active).
+function isBusy() {
+  return !!(activeFilter || searchQuery || document.querySelector('.detail-row.on'));
 }
 
 async function refresh() {
-  const dot   = document.getElementById('live-dot');
-  const label = document.getElementById('live-label');
+  const dot       = document.getElementById('live-dot');
+  const label     = document.getElementById('live-label');
+  const pausedLbl = document.getElementById('paused-lbl');
+  const busy      = isBusy();
 
   try {
+    // Stats are just number updates — never disruptive, always refresh.
+    await loadStats();
+
+    if (busy) {
+      // Defer the re-renders that would disrupt what the user is reading.
+      pausedLbl.style.display = 'inline';
+      tickCountdown(BUSY_RETRY);
+      setTimeout(refresh, BUSY_RETRY * 1000);
+      return;
+    }
+
+    pausedLbl.style.display = 'none';
     await Promise.all([
-      loadStats(),
       loadHeatmap(),
       loadFeed(),
       loadAdvisories(),

@@ -167,9 +167,11 @@ def poll_once(producer: Producer, db_conn):
     producer.flush()
 
     if failed:
-        # Don't advance the cursor — next cycle will retry from same position
-        print(f"[WARN] {len(failed)} deliveries failed — state not advanced")
-    elif newest_id != last_id:
+        # Log failures but still advance — re-blocking the cursor forever on a
+        # persistent delivery error would re-publish the entire backlog each cycle.
+        # The sink uses ON CONFLICT DO NOTHING so the pipeline is idempotent.
+        print(f"[WARN] {len(failed)} deliveries failed — cursor still advanced")
+    if newest_id != last_id:
         save_state(cur, newest_ts, newest_id)
         db_conn.commit()
         print(f"[STATE] cursor → {newest_ts}  {newest_id}")
