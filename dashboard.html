@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VulnTracker — Security Dashboard</title>
+  <title>VulTracker — Security Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -414,7 +414,7 @@
 <!-- ════════════════ TOP BAR ════════════════ -->
 <nav id="topbar">
   <div class="logo">
-    <span class="logo-name">VulnTracker</span>
+    <span class="logo-name">VulTracker</span>
     <span class="logo-tag">Dependency Vuln Propagation</span>
   </div>
 
@@ -527,9 +527,9 @@
 
 // ── Config ─────────────────────────────────────────────────────────────────
 // When served from the API itself (GET /) use relative URLs so no hardcoded
-// host is needed.  Override by setting window.VULNTRACKER_API before this
+// host is needed.  Override by setting window.VULTRACKER_API before this
 // script runs, e.g. for a standalone file opened from disk.
-const API   = window.VULNTRACKER_API || '';
+const API   = window.VULTRACKER_API || '';
 const TICK       = 30; // seconds between full refresh
 const BUSY_RETRY = 5;  // seconds between retries while user is examining
 

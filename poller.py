@@ -51,8 +51,8 @@ def load_state(cur):
 def save_state(cur, published_at, advisory_id):
     cur.execute(
         """
-        INSERT INTO poller_state (id, last_seen_published_at, last_seen_advisory_id)
-        VALUES (1, %s, %s)
+        INSERT INTO poller_state (id, source, last_seen_published_at, last_seen_advisory_id)
+        VALUES (1, 'ghsa', %s, %s)
         ON CONFLICT (id) DO UPDATE
             SET last_seen_published_at = EXCLUDED.last_seen_published_at,
                 last_seen_advisory_id  = EXCLUDED.last_seen_advisory_id

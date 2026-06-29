@@ -1,5 +1,5 @@
 """
-api.py — FastAPI read-only backend for the VulnTracker security dashboard.
+api.py — FastAPI read-only backend for the VulTracker security dashboard.
 
 Run:
     uvicorn api:app --reload --port 8000
@@ -19,7 +19,7 @@ load_dotenv()
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
-app = FastAPI(title="VulnTracker API", version="1.0.0")
+app = FastAPI(title="VulTracker API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
