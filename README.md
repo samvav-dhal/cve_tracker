@@ -2,7 +2,7 @@
 
 A Kafka-based streaming pipeline that detects public GitHub repositories pinning vulnerable PyPI packages — automatically, within minutes of a GHSA advisory being published.
 
-**Real results on live data:** 667 affected repositories identified across 89 advisories, including repos pinning vulnerable versions of `litellm`, `cryptography`, and `torch`.
+**Real results on live data:** 1039 affected repositories identified across 89 advisories, including repos pinning vulnerable versions of `litellm`, `cryptography`, and `torch`.
 
 ---
 
